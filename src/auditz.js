@@ -63,37 +63,37 @@ export default (Model, bootOptions = {}) => {
   Model.settings.validateUpsert = options.validateUpsert;
 
   if(options.createdAt !== false) {
-    if(typeof(properties[options.createdAt]) == 'undefined') {
+    if(typeof(properties[options.createdAt]) === 'undefined') {
       Model.defineProperty(options.createdAt, {type: Date, required: options.required, defaultFn: 'now'});
     }
   }
 
   if(options.updatedAt !== false) {
-    if(typeof(properties[options.updatedAt]) == 'undefined') {
+    if(typeof(properties[options.updatedAt]) === 'undefined') {
       Model.defineProperty(options.updatedAt, {type: Date, required: options.required});
     }
   }
 
   if(options.deletedAt !== false) {
-    if(typeof(properties[options.deletedAt]) == 'undefined') {
+    if(typeof(properties[options.deletedAt]) === 'undefined') {
       Model.defineProperty(options.deletedAt, {type: Date, required: false});
     }
   }
 
   if(options.createdBy !== false) {
-    if(typeof(properties[options.createdBy]) == 'undefined') {
+    if(typeof(properties[options.createdBy]) === 'undefined') {
       Model.defineProperty(options.createdBy, {type: Number, required: false});
     }
   }
 
   if(options.updatedBy !== false) {
-    if(typeof(properties[options.updatedBy]) == 'undefined') {
+    if(typeof(properties[options.updatedBy]) === 'undefined') {
       Model.defineProperty(options.updatedBy, {type: Number, required: false});
     }
   }
 
   if(options.deletedBy !== false) {
-    if(typeof(properties[options.deletedBy]) == 'undefined') {
+    if(typeof(properties[options.deletedBy]) === 'undefined') {
       Model.defineProperty(options.deletedBy, {type: Number, required: false});
     }
   }
