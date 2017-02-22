@@ -7,6 +7,7 @@ var app = require(path.join(SIMPLE_APP, 'server/server.js'));
 // The reason we use order: [] is to avoid strongloop/loopback#1525.
 // This is only a problem for memory connectors.
 var includeDeleted = { deleted: true, order: [] };
+// var includeDeleted = { deleted: true };
 
 
 test('loopback auditz', function(tap) {
@@ -176,7 +177,7 @@ test('loopback auditz', function(tap) {
 
   });
 
-  tap.test('deletedAt', function(t) {
+  tap.test('softDeletes turned on', function(t) {
     t.test('count excludes deleted instances by default', function(tt) {
       var Book = app.model('counting_1',
         { properties: { id: { type: Number, generated: false, id: true }, name: String, type: String },
@@ -546,13 +547,199 @@ test('loopback auditz', function(tap) {
     t.end();
   });
 
+  tap.test('softDeletes turned off', function(t) {
+    t.test('count excludes deleted instances by default', function(tt) {
+      var Book = app.model('hard_deletes_counting_1',
+        { properties: { id: { type: Number, generated: false, id: true }, name: String, type: String },
+          mixins: { Auditz: {softDelete: false} },
+          dataSource: 'db'
+        }
+      );
+
+      Book.create({ id: 1, name: 'book 1', type: 'fiction'});
+      Book.create({ id: 2, name: 'book 2', type: 'fiction'});
+      Book.create({ id: 3, name: 'book 3', type: 'non-fiction'});
+
+      Book.destroyAll({ type: 'non-fiction' }, function() {
+        Book.count({}, function(err, cnt) {
+          tt.equal(cnt, 2);
+          tt.end();
+        });
+      });
+    });
+
+    t.test('count excludes deleted instances even when a where is supplied', function(tt) {
+      var Book = app.model('hard_deletes_counting_1',
+        { properties: { id: { type: Number, generated: false, id: true }, name: String, type: String },
+          mixins: { Auditz: {softDelete: false} },
+          dataSource: 'db'
+        }
+      );
+
+      Book.create({ id: 1, name: 'book 1', type: 'fiction'});
+      Book.create({ id: 2, name: 'book 2', type: 'fiction'});
+      Book.create({ id: 3, name: 'book 3', type: 'non-fiction'});
+
+      Book.destroyById(2, function() {
+        Book.count({ type: 'fiction'}, function(err, cnt) {
+          tt.equal(cnt, 1);
+          tt.end();
+        });
+      });
+    });
+
+    t.test('findOrCreate excludes deleted instances by default', function(tt) {
+      var Book = app.model('hard_deletes_findOrCreate_1',
+        { properties: { id: { type: Number, generated: false, id: true }, name: String, type: String },
+          mixins: { Auditz: {softDelete: false} },
+          dataSource: 'db'
+        }
+      );
+
+      Book.create({ id: 1, name: 'book 1', type: 'fiction'});
+      Book.create({ id: 2, name: 'book 2', type: 'fiction'});
+      Book.create({ id: 3, name: 'book 3', type: 'non-fiction'});
+
+      Book.destroyById(2, function() {
+        Book.findOrCreate({where: {name: 'book 2'}}, { id: 4, name: 'book 2', type: 'non-fiction'}, function(err, book) {
+          tt.notEqual(book, null);
+          tt.notEqual(book.id, 2);
+          tt.equal(book.type, 'non-fiction');
+          tt.end();
+        });
+      });
+    });
+
+    t.test('findOrCreate excludes deleted instances even when where is not supplied', function(tt) {
+      var Book = app.model('hard_deletes_findOrCreate_2',
+        { properties: { id: { type: Number, generated: false, id: true }, name: String, type: String },
+          mixins: { Auditz: {softDelete: false} },
+          dataSource: 'db'
+        }
+      );
+
+      Book.create({ id: 1, name: 'book 1', type: 'fiction'});
+      Book.create({ id: 2, name: 'book 2', type: 'fiction'});
+      Book.create({ id: 3, name: 'book 3', type: 'non-fiction'});
+
+      Book.destroyById(2, function() {
+        Book.findOrCreate({}, { id: 4, name: 'book 2', type: 'non-fiction'}, function(err, book) {
+          tt.notEqual(book, null);
+          tt.end();
+        });
+      });
+    });
+
+    t.test('excludes deleted instances by default during queries', function(tt) {
+      var Book = app.model('hard_deletes_querying_1',
+        { properties: { id: { type: Number, generated: false, id: true }, name: String, type: String },
+          mixins: { Auditz: {softDelete: false} },
+          dataSource: 'db'
+        }
+      );
+
+      Book.create({ id: 1, name: 'book 1', type: 'fiction'});
+      Book.create({ id: 2, name: 'book 2', type: 'fiction'});
+      Book.create({ id: 3, name: 'book 3', type: 'non-fiction'});
+
+      Book.destroyAll({ type: 'non-fiction' }, function() {
+        Book.find({}, function(err, books) {
+          tt.equal(books.length, 2);
+          tt.equal(books[0].id, 1);
+          tt.equal(books[1].id, 2);
+          tt.end();
+        });
+      });
+    });
+
+    t.test('includes deleted instances by configuration during queries', function(tt) {
+      var Book = app.model('hard_deletes_querying_2',
+        { properties: { id: { type: Number, generated: false, id: true }, name: String, type: String },
+          mixins: { Auditz: {softDelete: false} },
+          dataSource: 'db'
+        }
+      );
+
+      Book.create({ id: 1, name: 'book 1', type: 'fiction'});
+      Book.create({ id: 2, name: 'book 2', type: 'fiction'});
+      Book.create({ id: 3, name: 'book 3', type: 'non-fiction'});
+
+      Book.destroyAll({type: 'non-fiction'}, function() {
+        Book.find({includeDeleted}, function(err, books) {
+          tt.equal(books.length, 2);
+          tt.end();
+        });
+      });
+    });
+
+    t.test('should add a deletedAt property to all matching', function(tt) {
+      var Book = app.model('hard_deletes_destroyAll_1',
+        { properties: { name: String, type: String },
+          mixins: { Auditz: {softDelete: false} },
+          dataSource: 'db'
+        }
+      );
+
+      Book.create({ name: 'book 1', type: 'fiction'});
+      Book.create({ name: 'book 2', type: 'fiction'});
+      Book.create({ name: 'book 3', type: 'non-fiction'});
+
+      Book.destroyAll({type: 'fiction'}, function() {
+        Book.find(includeDeleted, function(err, books) {
+          tt.equal(books.length, 1);
+          tt.end();
+        });
+      });
+    });
+
+    t.test('should add a deletedAt property to the appropriate instance', function(tt) {
+      var Book = app.model('hard_deletes_destroyById_1',
+        { properties: { id: { type: Number, generated: false, id: true }, name: String, type: String },
+          mixins: { Auditz: {softDelete: false} },
+          dataSource: 'db'
+        }
+      );
+
+      Book.create({ id: 1, name: 'book 1', type: 'fiction'});
+      Book.create({ id: 2, name: 'book 2', type: 'fiction'});
+      Book.create({ id: 3, name: 'book 3', type: 'non-fiction'});
+
+      Book.destroyById(1, function() {
+        Book.find(includeDeleted, function(err, books) {
+          tt.equal(books.length, 2);
+          tt.end();
+        });
+      });
+
+    });
+
+    t.test('should add a deletedAt property to the instance', function(tt) {
+      var Book = app.model('hard_deletes_destroy_1',
+        { properties: { id: {type: Number, generated: false, id: true}, name: String, type: String },
+          mixins: { Auditz: {softDelete: false} },
+          dataSource: 'db'
+        }
+      );
+
+      Book.create({ name: 'book 1', type: 'fiction'}, function(err, book) {
+        book.destroy({}, function(err, b) {
+          tt.equal(b.count, 1);
+          tt.end();
+        });
+      });
+
+    });
+
+    t.end();
+  });
+
   tap.test('boot options', function(t) {
 
     t.test('should use createdOn and updatedOn instead', function(tt) {
       var Book = app.model('createdOn_1',
         {
           properties: {id: {type: Number, generated: false, id: true}, name: String, type: String},
-          mixins    : {Auditz: { createdAt:'createdOn', updatedAt:'updatedOn' }},
+          mixins    : {Auditz: { createdAt:'createdOn', updatedAt:'updatedOn', revisions: false }},
           dataSource: 'db'
         }
       );
@@ -598,6 +785,110 @@ test('loopback auditz', function(tap) {
       tt.end();
     });
 
+    t.test('should not have createdAt', function(tt) {
+      var Book = app.model('no_createdAt',
+        {
+          properties: {id: {type: Number, generated: false, id: true}, name: String, type: String},
+          mixins    : {Auditz: { createdAt: false }},
+          dataSource: 'db'
+        }
+      );
+      tt.equal(Book.definition.properties.createdAt, undefined);
+      Book.destroyAll(function(err) {
+        tt.error(err);
+        Book.create({name:'book 1', type:'fiction'}, function(err, book) {
+          tt.error(err);
+
+          tt.type(book.createdAt, 'undefined');
+          tt.equal(book.createdBy, 0);
+
+          tt.end();
+        });
+      });
+    });
+
+    t.test('should not have createdBy', function(tt) {
+      var Book = app.model('no_createdBy',
+        {
+          properties: {id: {type: Number, generated: false, id: true}, name: String, type: String},
+          mixins    : {Auditz: { createdBy: false }},
+          dataSource: 'db'
+        }
+      );
+      tt.equal(Book.definition.properties.createdBy, undefined);
+      Book.destroyAll(function(err) {
+        tt.error(err);
+        Book.create({name:'book 1', type:'fiction'}, function(err, book) {
+          tt.error(err);
+
+          tt.type(book.createdBy, 'undefined');
+          tt.type(book.createdAt, Date);
+
+          tt.end();
+        });
+      });
+    });
+
+    t.test('should not have updatedAt', function(tt) {
+      var Book = app.model('no_updatedAt',
+        {
+          properties: {id: {type: Number, generated: false, id: true}, name: String, type: String},
+          mixins    : {Auditz: { updatedAt: false }},
+          dataSource: 'db'
+        }
+      );
+      tt.equal(Book.definition.properties.updatedAt, undefined);
+      Book.destroyAll(function(err) {
+        tt.error(err);
+        Book.create({name:'book 1', type:'fiction'}, function(err, book) {
+          tt.error(err);
+
+          // ensure we give enough time for the updatedAt value to be different
+          setTimeout(function pause() {
+            book.updateAttributes({ type:'historical-fiction' }, function(err, b) {
+              tt.error(err);
+              tt.type(book.updatedAt, 'undefined');
+              tt.equal(book.updatedBy, 0);
+              // tt.ok(b.updatedAt.getTime() > updatedAt.getTime());
+              tt.end();
+            });
+          }, 1);
+
+        });
+      });
+    });
+
+    t.test('should not have updatedBy', function(tt) {
+      var Book = app.model('no_updatedBy',
+        {
+          properties: {id: {type: Number, generated: false, id: true}, name: String, type: String},
+          mixins    : {Auditz: { updatedBy: false }},
+          dataSource: 'db'
+        }
+      );
+      var updatedAt;
+      tt.equal(Book.definition.properties.updatedBy, undefined);
+      Book.destroyAll(function(err) {
+        tt.error(err);
+        Book.create({name:'book 1', type:'fiction'}, function(err, book) {
+          tt.error(err);
+
+          updatedAt = book.updatedAt;
+
+          // ensure we give enough time for the updatedAt value to be different
+          setTimeout(function pause() {
+            book.updateAttributes({ type:'historical-fiction' }, function(err, b) {
+              tt.error(err);
+              tt.ok(b.updatedAt.getTime() > updatedAt.getTime());
+              tt.type(book.updatedBy, 'undefined');
+              tt.end();
+            });
+          }, 1);
+
+        });
+      });
+    });
+
     t.test('should turn on validation and upsert fails', function(tt) {
       var Book = app.model('validate_1',
         {
@@ -621,11 +912,35 @@ test('loopback auditz', function(tap) {
       });
     });
 
+    t.test('should fail upsert when validateUpsert is set to true on the model', function(tt) {
+      var Book = app.model('validate_1',
+        {
+          options   : { validateUpsert: true  },
+          properties: {id: {type: Number, generated: false, id: true}, name: String, type: String},
+          mixins    : {Auditz: {validateUpsert: true}},
+          dataSource: 'db'
+        }
+      );
+
+      Book.destroyAll(function() {
+        Book.create({name:'book 1', type:'fiction'}, function(err, book) {
+          tt.error(err);
+          // this upsert call should fail because we have turned on validation
+          Book.updateOrCreate({id:book.id, type: 'historical-fiction'}, function(err) {
+            tt.equal(err.name, 'ValidationError');
+            tt.equal(err.details.context, 'validate_1');
+            tt.ok(err.details.codes.createdAt.indexOf('presence') >= 0);
+            tt.end();
+          });
+        });
+      });
+    });
+
     t.end();
 
   });
 
-  tap.test('operation hook options', function(t) {
+tap.test('operation hook options', function(t) {
 
     t.test('should skip changing updatedAt when option passed', function(tt) {
       Widget.destroyAll(function() {

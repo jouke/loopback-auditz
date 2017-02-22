@@ -1,11 +1,11 @@
 {
   "name": "loopback-auditz",
-  "version": "0.3.2",
+  "version": "0.4.2",
   "description": "Adds comprehensive audit trail functionality to Loopback by keeping track of who created/modified/deleted data and when they did it, and adds a revisions model compatible with Sofa/Revisionable for PHP (https://github.com/jarektkaczyk/revisionable)",
   "main": "src/index.js",
   "scripts": {
     "preversion": "npm test",
-    "compile": "gulp babel",
+    "compile": "projectz compile && gulp babel",
     "prepublish": "npm run compile",
     "pretest": "eslint ./src/*.js && gulp babel",
     "test": "nyc tap ./test/*.js",
@@ -24,14 +24,22 @@
     "timestamp",
     "revisions"
   ],
-  "author": {
-    "name": "Jouke Visser",
-    "email": "jouke@studio-mv.nl"
+  "author": "Jouke Visser (jouke@studio-mv.nl)",
+  "badges": {
+    "list": [
+      "travisci",
+      "npmversion",
+      "npmdownloads",
+      "coveralls",
+      "daviddm",
+      "daviddmdev"
+    ],
+    "config": {}
   },
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jouke/loopback-auditz.git"
+    "url": "git+https://github.com/jouke/loopback-auditz.git"
   },
   "babel": {
     "presets": [
@@ -71,7 +79,17 @@
     "loopback-component-remote-ctx": "^0.2.2",
     "loopback-datasource-juggler": ">=2.33.2",
     "nyc": "latest",
+    "projectz": "^1.3.2",
     "supertest": "^2.0.1",
     "tap": "latest"
+  },
+  "maintainers": [],
+  "contributors": [
+    "Jouke Visser <jouke@studio-mv.nl> (http://studio-mv.nl)",
+    "Samuel Gaus <sam@gaus.co.uk> (http://gaus.ie)",
+    "Dalibor Karlović <dkarlovi@gmail.com> (https://github.com/dkarlovi)"
+  ],
+  "bugs": {
+    "url": "https://github.com/jouke/loopback-auditz/issues"
   }
 }

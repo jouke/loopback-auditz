@@ -1,7 +1,24 @@
-[![Coverage Status](https://coveralls.io/repos/github/jouke/loopback-auditz/badge.svg?branch=master)](https://coveralls.io/github/jouke/loopback-auditz?branch=master)
+<!-- TITLE/ -->
 
-LoopBack Auditz
-===============
+<h1>loopback-auditz</h1>
+
+<!-- /TITLE -->
+
+
+<!-- BADGES/ -->
+
+<span class="badge-travisci"><a href="http://travis-ci.org/jouke/loopback-auditz" title="Check this project's build status on TravisCI"><img src="https://img.shields.io/travis/jouke/loopback-auditz/master.svg" alt="Travis CI Build Status" /></a></span>
+<span class="badge-npmversion"><a href="https://npmjs.org/package/loopback-auditz" title="View this project on NPM"><img src="https://img.shields.io/npm/v/loopback-auditz.svg" alt="NPM version" /></a></span>
+<span class="badge-npmdownloads"><a href="https://npmjs.org/package/loopback-auditz" title="View this project on NPM"><img src="https://img.shields.io/npm/dm/loopback-auditz.svg" alt="NPM downloads" /></a></span>
+<span class="badge-coveralls"><a href="https://coveralls.io/r/jouke/loopback-auditz" title="View this project's coverage on Coveralls"><img src="https://img.shields.io/coveralls/jouke/loopback-auditz.svg" alt="Coverage Status" /></a></span>
+<span class="badge-daviddm"><a href="https://david-dm.org/jouke/loopback-auditz" title="View the status of this project's dependencies on DavidDM"><img src="https://img.shields.io/david/jouke/loopback-auditz.svg" alt="Dependency Status" /></a></span>
+<span class="badge-daviddmdev"><a href="https://david-dm.org/jouke/loopback-auditz#info=devDependencies" title="View the status of this project's development dependencies on DavidDM"><img src="https://img.shields.io/david/dev/jouke/loopback-auditz.svg" alt="Dev Dependency Status" /></a></span>
+
+<!-- /BADGES -->
+
+
+Description
+===========
 
 This module is designed for the [Strongloop Loopback](https://github.com/strongloop/loopback) framework. It provides extensive support for Audit Trails in your LoopBack based application.
 
@@ -10,6 +27,8 @@ It consists of a group of functionalities:
 * Timestamps of updates/creates (based upon the work of [loopback-ds-timestamp-mixin](https://github.com/clarkbw/loopback-ds-timestamp-mixin)). 
 * Registration of the user that created/updated/deleted (thanks to the work of [loopback-component-remote-ctx](https://github.com/snowyu/loopback-component-remote-ctx.js)).
 * History logging in a separate table (a port of [Sofa/Revisionable](https://github.com/jarektkaczyk/revisionable)). 
+
+Each of these main functionalities can be turned off individually.
 
 Install
 =======
@@ -97,6 +116,7 @@ There are a number of configurable options to the mixin:
       "createdBy": "created_by",
       "updatedBy": "updated_by",
       "deletedBy": "deleted_by",
+      "softDelete": true,
       "unknownUser": 0,
       "remoteCtx": "remoteCtx",
       "scrub": true,
@@ -105,6 +125,7 @@ There are a number of configurable options to the mixin:
       "silenceWarnings": false,
       "revisions": {
         "name": "other_revisions_table",
+        "idType": "Number",
         "dataSource": "db",
         "autoUpdate": false
       }
@@ -113,22 +134,26 @@ There are a number of configurable options to the mixin:
 ```
 
 ### createdAt
-This allows you to define an alternative name for the createdAt field
+This allows you to define an alternative name for the createdAt field. When set to `false`, this property will not be defined nor used.
 
 ### updatedAt
-This allows you to define an alternative name for the updatedAt field
+This allows you to define an alternative name for the updatedAt field. When set to `false`, this property will not be defined nor used.
 
 ### deletedAt
-This allows you to define an alternative name for the deletedAt field
+This allows you to define an alternative name for the deletedAt field. If you don't want the soft delete functionality, specify `'softDelete': false` in the options.
 
 ### createdBy
-This allows you to define an alternative name for the createdBy field
+This allows you to define an alternative name for the createdBy field. When set to `false`, this property will not be defined nor used.
 
 ### updatedBy
-This allows you to define an alternative name for the updatedBy field
+This allows you to define an alternative name for the updatedBy field. When set to `false`, this property will not be defined nor used.
 
 ### deletedBy
-This allows you to define an alternative name for the deletedBy field
+This allows you to define an alternative name for the deletedBy field.If you don't want the soft delete functionality, specify `'softDelete': false` in the options.
+
+### softDelete
+By default, soft delete functionality is turned on and uses the deletedAt and deletedBy configuration options. If you set softDelete to false, it completely ignores
+deletedAt, deletedBy and scrub, and all deletes will become hard deletes.
 
 ### unknownUser
 This allows you to define which userId should be filled out when no current user can be determined
@@ -137,7 +162,8 @@ This allows you to define which userId should be filled out when no current user
 The value you provided in `component-config.json` for `argName` of `loopback-component-remote-ctx`
 
 ### scrub
-If true, this sets all but the "id" fields to null. If an array, it will only scrub properties with those names.
+If true, this sets all but the "id" fields to null. If an array, it will only scrub properties with those names. However, if you specified `softDelete: false` this option
+will be ignored.
 
 ### required
 This defines the requiredness of the createdAt and updatedAt fields. The `deletedAt` field is never required
@@ -155,6 +181,9 @@ changes in a revisions model is enabled, and the following configuration options
 ### name
 The name for the revisions model in which to keep changes to the model.
 
+### idType
+The data type to assume for id fields. The default is 'Number', which is fine for most databases, but (for example) MongoDB uses strings, so in that case provide "String" as the value for idType.
+
 ### dataSource
 The dataSource to connect the revisions model to. This dataSource needs to be defined in `datasources.json` first.
 
@@ -162,6 +191,11 @@ The dataSource to connect the revisions model to. This dataSource needs to be de
 If set to false, it will assume the model exists in the dataSource already, and we don't need to create or alter the 
 table. If set to true, it will run autoupdate on the dataSource for the given revisions model name to make sure the table 
 exists with the right columns.
+
+Usage with MongoDB
+==================
+
+In case you use MongoDB with this module, and also use the 'revisions' table option, you need to configure the idType as a 'String'. Otherwise this module will attempt to store the non-numeric id in the row_id property of the revisions model, which is a Number by default.
 
 Operation Options
 =================
@@ -180,16 +214,31 @@ Book.updateOrCreate({name: 'New name', id: 2}, {skipUpdatedAt: true}, function(e
 });
 ```
 
-Retrieving deleted entities
----------------------------
+Retrieving soft deleted entities
+--------------------------------
 
-To run queries that include deleted items in the response, add `{ deleted: true }` to the query object (at the same level as `where`, `include` etc).
+Unless you specified softDelete to be turned off, you can run queries that include deleted items in the response, by adding `{ deleted: true }` to the query object (at the same level as `where`, `include` etc).
 
-License
-=======
-[ISC](LICENSE.md)
 
-Author
-======
+<!-- CONTRIBUTE/ -->
 
-Jouke Visser <jouke at studio-mv dot nl>
+<h2>Contribute</h2>
+
+<a href="https://github.com/jouke/loopback-auditz/blob/master/CONTRIBUTING.md#files">Discover how you can contribute by heading on over to the <code>CONTRIBUTING.md</code> file.</a>
+
+<!-- /CONTRIBUTE -->
+
+
+<!-- LICENSE/ -->
+
+<h2>License</h2>
+
+Unless stated otherwise all works are:
+
+<ul><li>Copyright &copy; <a href="jouke@studio-mv.nl">Jouke Visser</a></li></ul>
+
+and licensed under:
+
+<ul><li><a href="http://spdx.org/licenses/ISC.html">ISC License</a></li></ul>
+
+<!-- /LICENSE -->

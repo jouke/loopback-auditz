@@ -25,6 +25,33 @@ app.on('started', function() {
       app.stop();
     });
 
+    tap.test('Config options for revisions', function(t) {
+      var testModel = app.dataSources['db'].createModel(
+        'test',
+        {
+          name: {
+            type: 'string'
+          }
+        },
+        {
+          mixins: {
+            Auditz: {
+              revisions: {
+                name: 'another_name',
+                idType: 'String'
+              }
+            }
+          }
+        }
+      );
+
+      app.model(testModel);
+      t.notEqual(app.models['another_name'], null);
+      t.equal(app.models['another_name'].definition.properties.row_id.type, String);
+      t.end()
+
+    });
+
     tap.test('create/update/delete', function (t) {
 
       t.beforeEach(function(done) {

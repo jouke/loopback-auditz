@@ -6,7 +6,6 @@ const warn = (options, ...rest) => {
     console.warn(...rest);
   }
 };
-const utils = require('loopback-datasource-juggler/lib/utils');
 
 
 export default (Model, bootOptions = {}) => {
@@ -20,6 +19,7 @@ export default (Model, bootOptions = {}) => {
     createdBy: 'createdBy',
     updatedBy: 'updatedBy',
     deletedBy: 'deletedBy',
+    softDelete: true,
     unknownUser: 0,
     remoteCtx: 'remoteCtx',
     scrub: false,
@@ -28,8 +28,9 @@ export default (Model, bootOptions = {}) => {
     silenceWarnings: false,
     revisions: {
       name: 'revisions',
+      idType: 'Number',
       dataSource: 'db',
-      autoMigrate: true,
+      autoUpdate: true,
     },
   }, bootOptions);
 
@@ -41,13 +42,15 @@ export default (Model, bootOptions = {}) => {
   const idName = Model.dataSource.idName(Model.modelName);
 
   let scrubbed = {};
-  if (options.scrub !== false) {
-    let propertiesToScrub = options.scrub;
-    if (!Array.isArray(propertiesToScrub)) {
-      propertiesToScrub = Object.keys(properties)
-        .filter(prop => !properties[prop][idName] && prop !== options.deletedAt && prop !== options.deletedBy);
+  if (options.softDelete) {
+    if (options.scrub !== false) {
+      let propertiesToScrub = options.scrub;
+      if (!Array.isArray(propertiesToScrub)) {
+        propertiesToScrub = Object.keys(properties)
+          .filter(prop => !properties[prop][idName] && prop !== options.deletedAt && prop !== options.deletedBy);
+      }
+      scrubbed = propertiesToScrub.reduce((obj, prop) => ({ ...obj, [prop]: null }), {});
     }
-    scrubbed = propertiesToScrub.reduce((obj, prop) => ({ ...obj, [prop]: null }), {});
   }
 
   if (!options.validateUpsert && Model.settings.validateUpsert) {
@@ -62,13 +65,38 @@ export default (Model, bootOptions = {}) => {
 
   Model.settings.validateUpsert = options.validateUpsert;
 
-  Model.defineProperty(options.createdAt, {type: Date, required: options.required, defaultFn: 'now'});
-  Model.defineProperty(options.updatedAt, {type: Date, required: options.required});
-  Model.defineProperty(options.deletedAt, {type: Date, required: false});
+  if (options.createdAt !== false) {
+    if (typeof(properties[options.createdAt]) === 'undefined') {
+      Model.defineProperty(options.createdAt, {type: Date, required: options.required, defaultFn: 'now'});
+    }
+  }
 
-  Model.defineProperty(options.createdBy, {type: Number, required: false});
-  Model.defineProperty(options.updatedBy, {type: Number, required: false});
-  Model.defineProperty(options.deletedBy, {type: Number, required: false});
+  if (options.updatedAt !== false) {
+    if (typeof(properties[options.updatedAt]) === 'undefined') {
+      Model.defineProperty(options.updatedAt, {type: Date, required: options.required});
+    }
+  }
+
+  if (options.createdBy !== false) {
+    if (typeof(properties[options.createdBy]) === 'undefined') {
+      Model.defineProperty(options.createdBy, {type: Number, required: false});
+    }
+  }
+
+  if (options.updatedBy !== false) {
+    if (typeof(properties[options.updatedBy]) === 'undefined') {
+      Model.defineProperty(options.updatedBy, {type: Number, required: false});
+    }
+  }
+
+  if (options.softDelete) {
+    if (typeof(properties[options.deletedAt]) === 'undefined') {
+      Model.defineProperty(options.deletedAt, {type: Date, required: false});
+    }
+    if (typeof(properties[options.deletedBy]) === 'undefined') {
+      Model.defineProperty(options.deletedBy, {type: Number, required: false});
+    }
+  }
 
   Model.observe('after save', (ctx, next) => {
     if (!options.revisions) {
@@ -86,10 +114,7 @@ export default (Model, bootOptions = {}) => {
     }
 
     Model.getApp((err, a) => {
-      if (err) {
-        console.error('Cannot get app! ', err);
-        return next(err);
-      }
+      if (err) { return next(err); }
       app = a;
       let ipForwarded = '';
       let ip = '127.0.0.1';
@@ -137,7 +162,7 @@ export default (Model, bootOptions = {}) => {
             });
             app.models[options.revisionsModelName].create(entries, next);
           } else {
-            warn(options, 'Cannot register delete without old instance! Options: %j', ctx.options);
+            debug('Cannot register delete without old instance! Options: %j', ctx.options);
             return next();
           }
         } else {
@@ -158,9 +183,7 @@ export default (Model, bootOptions = {}) => {
             let newInst = {};
             const query = {where: {[ idName ]: {inq: updatedIds}}};
             app.models[Model.modelName].find(query, (error, newInstances) => {
-              if (error) {
-                return next(error);
-              }
+              if (error) { return next(error); }
               newInstances.forEach(inst => {
                 newInst[ inst[ idName ] ] = inst;
               });
@@ -179,9 +202,9 @@ export default (Model, bootOptions = {}) => {
               app.models[options.revisionsModelName].create(entries, next);
             });
           } else {
-            warn(options, 'Cannot register update without old and new instance. Options: %j', ctx.options);
-            warn(options, 'instance: %j', ctx.instance);
-            warn(options, 'data: %j', ctx.data);
+            debug('Cannot register update without old and new instance. Options: %j', ctx.options);
+            debug('instance: %j', ctx.instance);
+            debug('data: %j', ctx.data);
             return next();
           }
         }
@@ -205,18 +228,12 @@ export default (Model, bootOptions = {}) => {
         }
         if (id) {
           Model.findById(id, {deleted: true}, (err, oldInstance) => {
-            if (err) {
-              console.error(err);
-              cb(err);
-            } else {
-              cb(null, oldInstance);
-            }
+            if (err) { cb(err); } else { cb(null, oldInstance); }
           });
         } else {
           const query = {where: ctx.where} || {};
           Model.find(query, (err, oldInstances) => {
             if (err) {
-              console.error(err);
               cb(err);
             } else {
               if (oldInstances.length > 1) {
@@ -278,13 +295,15 @@ export default (Model, bootOptions = {}) => {
       if (ctx.options && ctx.options.skipUpdatedAt) { return next(); }
       let keyAt = options.updatedAt;
       let keyBy = options.updatedBy;
-      // Since soft deletes replace the actual delete by an update, we set the option
-      // 'delete' in the overridden delete functions that perform updates.
-      // We now have to determine if we need to set updatedAt/updatedBy or
-      // deletedAt/deletedBy
-      if (softDelete) {
-        keyAt = options.deletedAt;
-        keyBy = options.deletedBy;
+      if (options.softDelete) {
+        // Since soft deletes replace the actual delete by an update, we set the option
+        // 'delete' in the overridden delete functions that perform updates.
+        // We now have to determine if we need to set updatedAt/updatedBy or
+        // deletedAt/deletedBy
+        if (softDelete) {
+          keyAt = options.deletedAt;
+          keyBy = options.deletedBy;
+        }
       }
       if (ctx.instance) {
         ctx.instance[keyAt] = new Date();
@@ -297,105 +316,108 @@ export default (Model, bootOptions = {}) => {
     });
   });
 
-  Model.destroyAll = function softDestroyAll(where, cb) {
-    let query = where || {};
-    let callback = cb;
-    if (typeof where === 'function') {
-      callback = where;
-      query = {};
-    }
-    return Model.updateAll(query, { ...scrubbed }, {delete: true})
-      .then(result => (typeof callback === 'function') ? callback(null, result) : result)
-      .catch(error => (typeof callback === 'function') ? callback(error) : Promise.reject(error));
-  };
-
-  Model.remove = Model.destroyAll;
-  Model.deleteAll = Model.destroyAll;
-
-  Model.destroyById = function softDestroyById(id, opt, cb) {
-    const callback = (cb === undefined && typeof opt === 'function') ? opt : cb;
-    let newOpt = {delete: true};
-    if (typeof opt === 'object') {
-      newOpt.remoteCtx = opt.remoteCtx;
-    }
-
-    return Model.updateAll({ [idName]: id }, { ...scrubbed}, newOpt)
-      .then(result => (typeof callback === 'function') ? callback(null, result) : result)
-      .catch(error => (typeof callback === 'function') ? callback(error) : Promise.reject(error));
-  };
-
-  Model.removeById = Model.destroyById;
-  Model.deleteById = Model.destroyById;
-
-  Model.prototype.destroy = function softDestroy(opt, cb) {
-    const callback = (cb === undefined && typeof opt === 'function') ? opt : cb;
-
-    return this.updateAttributes({ ...scrubbed }, {delete: true})
-      .then(result => (typeof cb === 'function') ? callback(null, result) : result)
-      .catch(error => (typeof cb === 'function') ? callback(error) : Promise.reject(error));
-  };
-
-  Model.prototype.remove = Model.prototype.destroy;
-  Model.prototype.delete = Model.prototype.destroy;
-
-  // Emulate default scope but with more flexibility.
-  const queryNonDeleted = {[options.deletedAt]: null};
-
-  const _findOrCreate = Model.findOrCreate;
-  Model.findOrCreate = function findOrCreateDeleted(query = {}, ...rest) {
-    if (!query.deleted) {
-      if (!query.where || Object.keys(query.where).length === 0) {
-        query.where = queryNonDeleted;
-      } else {
-        query.where = { and: [ query.where, queryNonDeleted ] };
+  if (options.softDelete) {
+    Model.destroyAll = function softDestroyAll(where, cb) {
+      let query = where || {};
+      let callback = cb;
+      if (typeof where === 'function') {
+        callback = where;
+        query = {};
       }
-    }
+      return Model.updateAll(query, { ...scrubbed }, {delete: true})
+        .then(result => (typeof callback === 'function') ? callback(null, result) : result)
+        .catch(error => (typeof callback === 'function') ? callback(error) : Promise.reject(error));
+    };
 
-    return _findOrCreate.call(Model, query, ...rest);
-  };
+    Model.remove = Model.destroyAll;
+    Model.deleteAll = Model.destroyAll;
 
-  const _find = Model.find;
-  Model.find = function findDeleted(query = {}, ...rest) {
-    if (!query.deleted) {
-      if (!query.where || Object.keys(query.where).length === 0) {
-        query.where = queryNonDeleted;
-      } else {
-        query.where = { and: [ query.where, queryNonDeleted ] };
+    Model.destroyById = function softDestroyById(id, opt, cb) {
+      const callback = (cb === undefined && typeof opt === 'function') ? opt : cb;
+      let newOpt = {delete: true};
+      if (typeof opt === 'object') {
+        newOpt.remoteCtx = opt.remoteCtx;
       }
-    }
 
-    return _find.call(Model, query, ...rest);
-  };
+      return Model.updateAll({ [idName]: id }, { ...scrubbed}, newOpt)
+        .then(result => (typeof callback === 'function') ? callback(null, result) : result)
+        .catch(error => (typeof callback === 'function') ? callback(error) : Promise.reject(error));
+    };
 
-  const _count = Model.count;
-  Model.count = function countDeleted(where = {}, ...rest) {
-    // Because count only receives a 'where', there's nowhere to ask for the deleted entities.
-    let whereNotDeleted;
-    if (!where || Object.keys(where).length === 0) {
-      whereNotDeleted = queryNonDeleted;
-    } else {
-      whereNotDeleted = { and: [ where, queryNonDeleted ] };
-    }
-    return _count.call(Model, whereNotDeleted, ...rest);
-  };
+    Model.removeById = Model.destroyById;
+    Model.deleteById = Model.destroyById;
 
-  const _update = Model.update;
-  Model.update = Model.updateAll = function updateDeleted(where = {}, ...rest) {
-    // Because update/updateAll only receives a 'where', there's nowhere to ask for the deleted entities.
-    let whereNotDeleted;
-    if (!where || Object.keys(where).length === 0) {
-      whereNotDeleted = queryNonDeleted;
-    } else {
-      whereNotDeleted = { and: [ where, queryNonDeleted ] };
-    }
-    return _update.call(Model, whereNotDeleted, ...rest);
-  };
+    Model.prototype.destroy = function softDestroy(opt, cb) {
+      const callback = (cb === undefined && typeof opt === 'function') ? opt : cb;
 
-  function _setupRevisionsModel(opts, cb) {
-    const callback = cb || utils.createPromiseCallback();
+      return this.updateAttributes({ ...scrubbed }, {delete: true})
+        .then(result => (typeof cb === 'function') ? callback(null, result) : result)
+        .catch(error => (typeof cb === 'function') ? callback(error) : Promise.reject(error));
+    };
+
+    Model.prototype.remove = Model.prototype.destroy;
+    Model.prototype.delete = Model.prototype.destroy;
+
+    // Emulate default scope but with more flexibility.
+    const queryNonDeleted = {[options.deletedAt]: null};
+
+    const _findOrCreate = Model.findOrCreate;
+    Model.findOrCreate = function findOrCreateDeleted(query = {}, ...rest) {
+      if (!query.deleted) {
+        if (!query.where || Object.keys(query.where).length === 0) {
+          query.where = queryNonDeleted;
+        } else {
+          query.where = { and: [ query.where, queryNonDeleted ] };
+        }
+      }
+
+      return _findOrCreate.call(Model, query, ...rest);
+    };
+
+    const _find = Model.find;
+    Model.find = function findDeleted(query = {}, ...rest) {
+      if (!query.deleted) {
+        if (!query.where || Object.keys(query.where).length === 0) {
+          query.where = queryNonDeleted;
+        } else {
+          query.where = { and: [ query.where, queryNonDeleted ] };
+        }
+      }
+
+      return _find.call(Model, query, ...rest);
+    };
+
+    const _count = Model.count;
+    Model.count = function countDeleted(where = {}, ...rest) {
+      // Because count only receives a 'where', there's nowhere to ask for the deleted entities.
+      let whereNotDeleted;
+      if (!where || Object.keys(where).length === 0) {
+        whereNotDeleted = queryNonDeleted;
+      } else {
+        whereNotDeleted = { and: [ where, queryNonDeleted ] };
+      }
+      return _count.call(Model, whereNotDeleted, ...rest);
+    };
+
+    const _update = Model.update;
+    Model.update = Model.updateAll = function updateDeleted(where = {}, ...rest) {
+      // Because update/updateAll only receives a 'where', there's nowhere to ask for the deleted entities.
+      let whereNotDeleted;
+      if (!where || Object.keys(where).length === 0) {
+        whereNotDeleted = queryNonDeleted;
+      } else {
+        whereNotDeleted = { and: [ where, queryNonDeleted ] };
+      }
+      return _update.call(Model, whereNotDeleted, ...rest);
+    };
+  }
+
+  function _setupRevisionsModel(opts) {
     const autoUpdate = (opts.revisions === true || (typeof opts.revisions === 'object' && opts.revisions.autoUpdate));
     const dsName = (typeof opts.revisions === 'object' && opts.revisions.dataSource) ?
       opts.revisions.dataSource : 'db';
+    const rowIdType = (typeof opts.revisions === 'object' && opts.revisions.idType) ?
+      opts.revisions.idType : 'Number';
 
     const revisionsDef = require('./models/revision.json');
     let settings = {};
@@ -405,6 +427,7 @@ export default (Model, bootOptions = {}) => {
       }
     }
 
+    revisionsDef.properties.row_id.type = rowIdType;
     const revisionsModel = app.dataSources[dsName].createModel(
       options.revisionsModelName,
       revisionsDef.properties,
@@ -418,26 +441,17 @@ export default (Model, bootOptions = {}) => {
     if (autoUpdate) {
       // create or update the revisions table
       app.dataSources[dsName].autoupdate([options.revisionsModelName], (error) => {
-        if (error) {
-          callback(error);
-        }
-        callback(null, app.models[options.revisionsModelName]);
+        if (error) {console.error(error);}
       });
     }
   }
 
   if (options.revisions) {
     Model.getApp((err, a) => {
-      if (err) {
-        return console.error(err);
-      }
+      if (err) { return console.error(err);}
       app = a;
       if (!app.models[options.revisionsModelName]) {
-        _setupRevisionsModel(options, (error) => {
-          if (error) {
-            return console.error(error);
-          }
-        });
+        _setupRevisionsModel(options);
       }
     });
   }
