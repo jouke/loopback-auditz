@@ -93,8 +93,10 @@ export default (Model, bootOptions = {}) => {
     if (typeof(properties[options.deletedAt]) === 'undefined') {
       Model.defineProperty(options.deletedAt, {type: Date, required: false});
     }
-    if (typeof(properties[options.deletedBy]) === 'undefined') {
-      Model.defineProperty(options.deletedBy, {type: Number, required: false});
+    if (options.deletedBy !== false) {
+      if (typeof(properties[options.deletedBy]) === 'undefined') {
+        Model.defineProperty(options.deletedBy, {type: Number, required: false});
+      }
     }
   }
 
