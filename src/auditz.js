@@ -1,5 +1,5 @@
 import _debug from './debug';
-
+import loopackUtils from 'loopback/lib/utils';
 const debug = _debug();
 const warn = (options, ...rest) => {
   if (!options.silenceWarnings) {
@@ -319,40 +319,44 @@ export default (Model, bootOptions = {}) => {
   if (options.softDelete) {
     Model.destroyAll = function softDestroyAll(where, cb) {
       let query = where || {};
-      let callback = cb;
+      let callback = cb || loopackUtils.createPromiseCallback();
       if (typeof where === 'function') {
         callback = where;
         query = {};
       }
-      return Model.updateAll(query, { ...scrubbed }, {delete: true})
-        .then(result => (typeof callback === 'function') ? callback(null, result) : result)
-        .catch(error => (typeof callback === 'function') ? callback(error) : Promise.reject(error));
+      Model.updateAll(query, { ...scrubbed }, {delete: true})
+        .then(result => callback(null, result))
+        .catch(error => callback(error));
+      return callback.promise;
     };
 
     Model.remove = Model.destroyAll;
     Model.deleteAll = Model.destroyAll;
 
     Model.destroyById = function softDestroyById(id, opt, cb) {
-      const callback = (cb === undefined && typeof opt === 'function') ? opt : cb;
+      let callback = (cb === undefined && typeof opt === 'function') ? opt : cb;
+      callback = callback || loopackUtils.createPromiseCallback();
       let newOpt = {delete: true};
       if (typeof opt === 'object') {
         newOpt.remoteCtx = opt.remoteCtx;
       }
 
-      return Model.updateAll({ [idName]: id }, { ...scrubbed}, newOpt)
-        .then(result => (typeof callback === 'function') ? callback(null, result) : result)
-        .catch(error => (typeof callback === 'function') ? callback(error) : Promise.reject(error));
+      Model.updateAll({ [idName]: id }, { ...scrubbed}, newOpt)
+        .then(result => callback(null, result))
+        .catch(error => callback(error));
+      return callback.promise;
     };
 
     Model.removeById = Model.destroyById;
     Model.deleteById = Model.destroyById;
 
     Model.prototype.destroy = function softDestroy(opt, cb) {
-      const callback = (cb === undefined && typeof opt === 'function') ? opt : cb;
-
-      return this.updateAttributes({ ...scrubbed }, {delete: true})
-        .then(result => (typeof cb === 'function') ? callback(null, result) : result)
-        .catch(error => (typeof cb === 'function') ? callback(error) : Promise.reject(error));
+      let callback = (cb === undefined && typeof opt === 'function') ? opt : cb;
+      callback = callback || loopackUtils.createPromiseCallback();
+      this.updateAttributes({ ...scrubbed }, {delete: true})
+        .then(result => callback(null, result))
+        .catch(error => callback(error));
+      return callback.promise;
     };
 
     Model.prototype.remove = Model.prototype.destroy;
